@@ -1,14 +1,9 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE QuantifiedConstraints #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
-
 module Lib where
 
-import           Data.Proxy
-import           Data.Typeable
+
+import Data.Typeable
+
 
 data Scheme a where
     Res :: Typeable a => Proxy a -> Scheme a
@@ -16,23 +11,24 @@ data Scheme a where
 
 data Function = forall a. Function (Scheme a) a
 
+
 newtype Wrap a = Wrap
     { unWrap :: a
     }
 
+
+data Result a = forall b . Result (Scheme b) (a -> b)
+
+
+dive :: Scheme a -> Result a
+dive (Res _)     = Result (Res Proxy) Wrap
+dive (Arg _ sch) =
+    case dive sch of
+        Result scheme' wr -> Result (Arg Proxy scheme') (\f -> wr . f . unWrap)
+
+
 wrapFunction :: Function -> Function
-wrapFunction (Function (Res v) f) =
-    Function (Res $ Wrap <$> v) (Wrap f)
-wrapFunction (Function (Arg arg (Res v)) f) =
-    Function (Arg Proxy (Res $ Wrap <$> v))
-             (\(Wrap v) -> Wrap $ f v)
-wrapFunction (Function (Arg arg1 (Arg arg2 (Res v))) f) =
-    Function (Arg Proxy (Arg Proxy (Res $ Wrap <$> v)))
-             (\(Wrap x) (Wrap y) -> Wrap $ f x y)
-wrapFunction (Function (Arg arg1 (Arg arg2 (Arg arg3 (Res v)))) f) =
-    Function (Arg Proxy (Arg Proxy (Arg Proxy (Res $ Wrap <$> v))))
-             (\(Wrap x) (Wrap y) (Wrap t) -> Wrap $ f x y t)
-wrapFunction (Function (Arg arg1 (Arg arg2 (Arg arg3 (Arg arg4 (Res v))))) f) =
-    Function (Arg Proxy (Arg Proxy (Arg Proxy (Arg Proxy (Res $ Wrap <$> v)))))
-             (\(Wrap x) (Wrap y) (Wrap t) (Wrap u) -> Wrap $ f x y t u)
-wrapFunction _ = undefined
+wrapFunction (Function scheme f) =
+    case dive scheme of
+        Result scheme' wr -> Function scheme' (wr f)
+
